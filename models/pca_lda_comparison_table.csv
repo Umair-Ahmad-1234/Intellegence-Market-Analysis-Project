@@ -1,0 +1,4 @@
+Feature set,Accuracy,Precision,Recall,F1
+Raw (standardized),0.818,0.0,0.0,0.0
+PCA (5 components),0.818,0.0,0.0,0.0
+LDA (1 component),0.818,0.0,0.0,0.0

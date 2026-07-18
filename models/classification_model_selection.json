@@ -1,0 +1,44 @@
+{
+  "selected_model": "Model 1 (FFNN)",
+  "selection_metric": "F1 (validation set)",
+  "validation_scores": {
+    "Model 1 (FFNN)": {
+      "Accuracy": 0.9885,
+      "Precision": 0.9683,
+      "Recall": 0.9531,
+      "F1": 0.9606
+    },
+    "Model 2 (Logistic Regression)": {
+      "Accuracy": 0.9585,
+      "Precision": 0.8833,
+      "Recall": 0.8281,
+      "F1": 0.8548
+    }
+  },
+  "test_scores": {
+    "Model 1 (FFNN)": {
+      "Accuracy": 0.9908,
+      "Precision": 0.987,
+      "Recall": 0.962,
+      "F1": 0.9744
+    },
+    "Model 2 (Logistic Regression)": {
+      "Accuracy": 0.9447,
+      "Precision": 0.8767,
+      "Recall": 0.8101,
+      "F1": 0.8421
+    }
+  },
+  "feature_columns": [
+    "Recency",
+    "Frequency",
+    "Product_Diversity",
+    "Avg_Spend_Trans",
+    "Homeware",
+    "Stationery",
+    "Gadgets",
+    "Decorations",
+    "Kitchenware"
+  ],
+  "monetary_threshold": 2116.8340000000007
+}

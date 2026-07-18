@@ -1,0 +1,3 @@
+,Accuracy,Precision,Recall,F1
+Model 1 (FFNN),0.9908,0.987,0.962,0.9744
+Model 2 (Logistic Regression),0.9447,0.8767,0.8101,0.8421

@@ -16,3 +16,7 @@ __pycache__/
 # OS files
 Thumbs.db
 .DS_Store
+
+# AI Assistant Logs
+.agents/
+.claude/

@@ -20,3 +20,5 @@ Thumbs.db
 # AI Assistant Logs
 .agents/
 .claude/
+
+app_test.py

@@ -189,7 +189,7 @@ elif app_screen == "PCA/LDA Graph Comparison":
         customer_list = sorted(df_features.index.tolist())
         selected_cid = st.selectbox("Select Customer ID", customer_list, key="dim_cid")
     with col_opt2:
-        projection_mode = st.radio("Dimensionality Reduction View", ["PCA", "LDA"], horizontal=True)
+        projection_mode = st.segmented_control("Dimensionality Reduction View", ["PCA", "LDA"], default="PCA")
         
     cust_row, input_features_df = get_customer_data(selected_cid)
     
@@ -210,22 +210,27 @@ elif app_screen == "PCA/LDA Graph Comparison":
         
     sample_df = pool_df.sample(n=min(sample_size, len(pool_df)), random_state=42) if len(pool_df) > 0 else pool_df
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    fig.patch.set_facecolor('#0e1117')
-    ax.set_facecolor('#1f2937')
-    ax.tick_params(colors="white")
-    ax.xaxis.label.set_color("white")
-    ax.yaxis.label.set_color("white")
+    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=120) # Increased DPI helps with zoom text clarity
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#f8fafc') # Light grey canvas area
+    
+    # Large, highly legible dark text parameters
+    ax.tick_params(colors="#1e293b", labelsize=11)
+    ax.xaxis.label.set_color("#1e293b")
+    ax.xaxis.label.set_size(12)
+    ax.yaxis.label.set_color("#1e293b")
+    ax.yaxis.label.set_size(12)
+    ax.grid(True, linestyle="--", alpha=0.5, color="#cbd5e1")
     
     base_features = ["Monetary", "Recency", "Frequency", "Product_Diversity", "Avg_Spend_Trans"]
     
     if projection_mode == "PCA" and "PC1" in df_features.columns and "PC2" in df_features.columns:
         if len(sample_df) > 0:
-            sns.scatterplot(data=sample_df, x="PC1", y="PC2", alpha=0.4, color="dodgerblue", ax=ax, label=f"Comparison Pool (N={len(sample_df)})")
-        ax.scatter(cust_row["PC1"].values[0], cust_row["PC2"].values[0], color="red", s=220, edgecolors="white", linewidth=2, label=f"Selected Profile ID: {selected_cid}")
+            sns.scatterplot(data=sample_df, x="PC1", y="PC2", alpha=0.5, color="#3b82f6", ax=ax, label=f"Comparison Pool (N={len(sample_df)})")
+        ax.scatter(cust_row["PC1"].values[0], cust_row["PC2"].values[0], color="#ef4444", s=220, edgecolors="black", linewidth=1.5, label=f"Selected Profile ID: {selected_cid}")
         ax.set_xlabel("PC1")
         ax.set_ylabel("PC2")
-        ax.legend(facecolor='#1f2937', edgecolor='none', labelcolor='white')
+        ax.legend(facecolor='white', edgecolor='#e2e8f0', labelcolor='#1e2937', fontsize=10)
         
     elif projection_mode == "LDA" and models.get("lda") is not None:
         try:
@@ -234,11 +239,11 @@ elif app_screen == "PCA/LDA Graph Comparison":
             
             if len(sample_df) > 0:
                 lda_sample = models["lda"].transform(sample_df[valid_cols])
-                sns.histplot(lda_sample.ravel(), color="teal", kde=True, ax=ax, alpha=0.4, label="Subsegment Distribution")
-            ax.axvline(lda_target, color="red", linestyle="--", linewidth=2.5, label=f"Target Location ({lda_target:.3f})")
+                sns.histplot(lda_sample.ravel(), color="#0d9488", kde=True, ax=ax, alpha=0.4, label="Subsegment Distribution")
+            ax.axvline(lda_target, color="#ef4444", linestyle="--", linewidth=2.5, label=f"Target Location ({lda_target:.3f})")
             ax.set_xlabel("Linear Discriminant 1 (LDA1)")
             ax.set_ylabel("Density Count")
-            ax.legend(facecolor='#1f2937', edgecolor='none', labelcolor='white')
+            ax.legend(facecolor='white', edgecolor='#e2e8f0', labelcolor='#1e2937', fontsize=10)
         except Exception as e:
             ax.text(0.5, 0.5, f"LDA transformation error: {str(e)}", color='white', ha='center', va='center')
     else:
@@ -294,18 +299,22 @@ elif app_screen == "Prediction Task Focus":
     impact_df = pd.DataFrame({"Feature Engineering Metric": explain_cols, "Relative Impact Score": norm_impact})
     impact_df = impact_df.sort_values(by="Relative Impact Score", ascending=True)
 
-    fig_exp, ax_exp = plt.subplots(figsize=(7, 2.5))
-    fig_exp.patch.set_facecolor('#0e1117')
-    ax_exp.set_facecolor('#1f2937')
+    fig_exp, ax_exp = plt.subplots(figsize=(7, 2.5), dpi=120)
+    fig_exp.patch.set_facecolor('white')
+    ax_exp.set_facecolor('#f8fafc')
     
-    colors_exp = ['#22c55e' if x >= 0 else '#ef4444' for x in impact_df["Relative Impact Score"]]
+    colors_exp = ['#16a34a' if x >= 0 else '#dc2626' for x in impact_df["Relative Impact Score"]]
     sns.barplot(data=impact_df, x="Relative Impact Score", y="Feature Engineering Metric", palette=colors_exp, ax=ax_exp)
     
-    ax_exp.tick_params(colors="white", labelsize=9)
-    ax_exp.xaxis.label.set_color("white")
-    ax_exp.yaxis.label.set_color("white")
+    # High visibility text configurations
+    ax_exp.tick_params(colors="#1e293b", labelsize=10)
+    ax_exp.xaxis.label.set_color("#1e293b")
+    ax_exp.yaxis.label.set_color("#1e293b")
+    ax_exp.grid(True, axis='x', linestyle="--", alpha=0.5, color="#cbd5e1")
     ax_exp.spines['top'].set_visible(False)
     ax_exp.spines['right'].set_visible(False)
+    ax_exp.spines['left'].set_color('#cbd5e1')
+    ax_exp.spines['bottom'].set_color('#cbd5e1')
     
     st.pyplot(fig_exp)
     
@@ -381,18 +390,21 @@ elif app_screen == "RL Policy Model Variant":
     action_1_trajectory = [q_values[1], q_values[1] * 1.08, q_values[1] * 1.14, q_values[1] * 1.19]
     action_2_trajectory = [q_values[2], q_values[2] * 0.95, q_values[2] * 0.88, q_values[2] * 0.82]
     
-    fig_track, ax_track = plt.subplots(figsize=(9, 3.2))
-    fig_track.patch.set_facecolor('#0e1117')
-    ax_track.set_facecolor('#1f2937')
+    fig_track, ax_track = plt.subplots(figsize=(9, 3.2), dpi=120)
+    fig_track.patch.set_facecolor('white')
+    ax_track.set_facecolor('#f8fafc')
     
-    ax_track.plot(sim_steps, action_1_trajectory, marker='o', linewidth=2.5, color='#22c55e', label="Simulated Path: Action 1 (Discount Strategy)")
-    ax_track.plot(sim_steps, action_2_trajectory, marker='x', linewidth=2.5, color='#ef4444', linestyle="--", label="Simulated Path: Action 2 (Premium Strategy)")
+    ax_track.plot(sim_steps, action_1_trajectory, marker='o', linewidth=2.5, color='#16a34a', label="Simulated Path: Action 1 (Discount Strategy)")
+    ax_track.plot(sim_steps, action_2_trajectory, marker='x', linewidth=2.5, color='#dc2626', linestyle="--", label="Simulated Path: Action 2 (Premium Strategy)")
     
-    ax_track.set_ylabel("Expected Value Estimate", color="white", fontsize=9)
-    ax_track.tick_params(colors="white", labelsize=9)
+    ax_track.set_ylabel("Expected Value Estimate", color="#1e293b", fontsize=10)
+    ax_track.tick_params(colors="#1e293b", labelsize=10)
+    ax_track.grid(True, linestyle="--", alpha=0.5, color="#cbd5e1")
     ax_track.spines['top'].set_visible(False)
     ax_track.spines['right'].set_visible(False)
-    ax_track.legend(facecolor='#1f2937', edgecolor='none', labelcolor='white', loc='upper left', fontsize=9)
+    ax_track.spines['left'].set_color('#cbd5e1')
+    ax_track.spines['bottom'].set_color('#cbd5e1')
+    ax_track.legend(facecolor='white', edgecolor='#e2e8f0', labelcolor='#1e2937', loc='upper left', fontsize=10)
     
     st.pyplot(fig_track)
 
@@ -407,9 +419,9 @@ elif app_screen == "RL Policy Model Variant":
     results_df = pd.DataFrame(strategy_metrics)
 
     plt.clf()
-    fig_bar, ax_bar = plt.subplots(figsize=(10, 4.5))
-    fig_bar.patch.set_facecolor('#0e1117')
-    ax_bar.set_facecolor('#1f2937')
+    fig_bar, ax_bar = plt.subplots(figsize=(10, 4.5), dpi=120)
+    fig_bar.patch.set_facecolor('white')
+    ax_bar.set_facecolor('#f8fafc')
 
     selected_agent_map = {
         "Trained DQN Agent": "DQN Policy Model",
@@ -420,26 +432,27 @@ elif app_screen == "RL Policy Model Variant":
     custom_colors = []
     for strategy in results_df["Operational Strategy"]:
         if strategy == current_selected:
-            custom_colors.append("#22c55e")
+            custom_colors.append("#16a34a") # Clean green for active selection
         else:
-            custom_colors.append("#4b5563")
+            custom_colors.append("#94a3b8") # Slate grey for comparison metrics
 
     sns.barplot(data=results_df, x="Operational Strategy", y="Total Accumulated Test Net Profit ($)", palette=custom_colors, ax=ax_bar)
 
-    ax_bar.set_ylabel("Net Profit ($)", color="white", fontsize=10, labelpad=10)
-    ax_bar.set_xlabel("Strategy Variant", color="white", fontsize=10, labelpad=10)
-    ax_bar.tick_params(colors="white", which="both")
+    ax_bar.set_ylabel("Net Profit ($)", color="#1e293b", fontsize=11, labelpad=10)
+    ax_bar.set_xlabel("Strategy Variant", color="#1e293b", fontsize=11, labelpad=10)
+    ax_bar.tick_params(colors="#1e293b", which="both", labelsize=10)
+    ax_bar.grid(True, axis='y', linestyle="--", alpha=0.5, color="#cbd5e1")
     ax_bar.spines['top'].set_visible(False)
     ax_bar.spines['right'].set_visible(False)
-    ax_bar.spines['left'].set_color('#4b5563')
-    ax_bar.spines['bottom'].set_color('#4b5563')
+    ax_bar.spines['left'].set_color('#cbd5e1')
+    ax_bar.spines['bottom'].set_color('#cbd5e1')
 
     for index, row in results_df.iterrows():
         ax_bar.text(
             index, 
             row["Total Accumulated Test Net Profit ($)"] + 5000, 
             f'${row["Total Accumulated Test Net Profit ($)"]:,.2f}', 
-            color='white', ha="center", fontweight='bold', fontsize=9
+            color='#1e293b', ha="center", fontweight='bold', fontsize=10
         )
 
     ax_bar.set_ylim(0, max(results_df["Total Accumulated Test Net Profit ($)"]) * 1.15)

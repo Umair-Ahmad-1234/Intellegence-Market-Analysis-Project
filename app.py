@@ -445,13 +445,20 @@ def init_state(customer_list):
     )
     st.session_state.setdefault("sample_size", 400)
 
+inject_theme()
 
-def navigation_bar():
-    options = ["Dashboard", "PCA/LDA", "Prediction", "RL Strategy"]
+customer_list = sorted(df_features.index.tolist())
+init_state(customer_list)
+
+# --- SIDEBAR CONTROL PANEL ---
+with st.sidebar:
+    st.markdown("### Navigation")
     
+    # Clean pill/capsule control tabs
+    nav_options = ["Dashboard", "PCA/LDA", "Prediction", "RL Strategy"]
     selection = st.segmented_control(
-        "Navigation",
-        options,
+        "Navigation Select",
+        options=nav_options,
         default=st.session_state.active_screen,
         label_visibility="collapsed"
     )
@@ -460,54 +467,30 @@ def navigation_bar():
         st.session_state.active_screen = selection
         st.rerun()
 
-
-inject_theme()
-
-customer_list = sorted(df_features.index.tolist())
-init_state(customer_list)
-
-# --- SIDEBAR CONTROL PANEL ---
-st.sidebar.markdown("### Customer controls")
-st.sidebar.selectbox(
-    "Select customer ID",
-    customer_list,
-    key="selected_customer",
-)
-
-st.sidebar.markdown("### Filters")
-st.sidebar.selectbox(
-    "Background pool",
-    [
-        "Show all customers",
-        "High spend tiers only (Monetary > $1,500)",
-        "High engagement profiles only (Frequency > 5 orders)",
-    ],
-    key="filter_tier",
-)
-
-st.sidebar.slider(
-    "Background sample density",
-    min_value=100,
-    max_value=1000,
-    step=50,
-    key="sample_size",
-)
-
-st.sidebar.markdown(
-    f"""
-    <div class="dataset-chip">
-        <b>Dataset:</b> Online Retail (UCI)<br>
-        <b>Profiles:</b> {len(df_features):,}<br>
-        <b>Model stack:</b> Classification + Regression + DQN
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+    st.markdown("---")
+    
+    st.markdown("### Customer controls")
+    st.selectbox(
+        "Select customer ID",
+        customer_list,
+        key="selected_customer",
+    )
+    
+    st.markdown("---")
+    st.markdown(
+        """
+        <div class="dataset-chip">
+            <strong>Dataset:</strong> Online Retail (UCI)<br>
+            <strong>Profiles:</strong> 3,317<br>
+            <strong>Model stack:</strong> Classification + Regression + DQN
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
 
 # --- RENDER SCREENS DYNAMICALLY ---
 hero_banner()
 st.space("small")
-navigation_bar()
 st.space("small")
 
 selected_cid = st.session_state.selected_customer
@@ -620,6 +603,35 @@ elif st.session_state.active_screen == "PCA/LDA":
         "Dimensionality reduction explorer",
         "Inspect customer position across PCA and LDA projections with context-aware filtering.",
     )
+    
+    st.markdown('<h2 class="section-title">Dimensionality reduction explorer</h2>', unsafe_allow_html=True)
+    st.markdown('<p class="section-sub">Inspect customer position across PCA and LDA projections</p>', unsafe_allow_html=True)
+    
+    # --- PCA/LDA EXCLUSIVE FILTERS ROW ---
+    # Placing them inside a horizontal row inside the main page keeps the screen dense but neat
+    filter_col1, filter_col2 = st.columns(2)
+    
+    with filter_col1:
+        st.selectbox(
+            "Background pool",
+            [
+                "Show all customers",
+                "High spend tiers only (Monetary > $1,500)",
+                "High engagement profiles only (Frequency > 5 orders)",
+            ],
+            key="filter_tier",
+        )
+        
+    with filter_col2:
+        st.slider(
+            "Background sample density",
+            min_value=100,
+            max_value=1000,
+            step=50,
+            key="sample_size",
+        )
+        
+    st.markdown("---")
 
     st.session_state.projection_mode = st.segmented_control(
         "Projection mode",

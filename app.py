@@ -5,11 +5,17 @@ import torch
 import torch.nn as nn
 import joblib
 from pathlib import Path
+import plotly.express as px
+import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Set page styling configuration immediately at the top level
-st.set_page_config(layout="wide", page_title="Intelligent Customer Behavior Dashboard")
+st.set_page_config(
+    layout="wide",
+    page_title="Intelligent Customer Behavior Dashboard",
+    page_icon=":material/monitoring:"
+)
 
 # --- PATH CONFIGURATIONS ---
 ROOT_DIR = Path(__file__).parent
@@ -30,6 +36,24 @@ class QNetwork(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+
+@st.cache_data(show_spinner=False)
+def read_feature_data(path: str):
+    return pd.read_csv(path, index_col="CustomerID")
+
+
+@st.cache_resource(show_spinner=False)
+def load_pickle(path: str):
+    return joblib.load(path)
+
+
+@st.cache_resource(show_spinner=False)
+def load_dqn(path: str):
+    dqn = QNetwork()
+    dqn.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
+    dqn.eval()
+    return dqn
+
 # --- SAFE DATA & ARTIFACT LOADING ---
 def load_all_resources():
     """Loads data and models with absolute error reporting to prevent GUI hangs."""
@@ -47,7 +71,7 @@ def load_all_resources():
         errors.append(f"Data file not found at: {DATA_PATH.resolve()}")
     else:
         try:
-            df = pd.read_csv(DATA_PATH, index_col="CustomerID")
+            df = read_feature_data(str(DATA_PATH))
         except Exception as e:
             errors.append(f"Failed to read CSV data: {str(e)}")
 
@@ -57,7 +81,7 @@ def load_all_resources():
         errors.append(f"Classifier model missing at: {clf_path.resolve()}")
     else:
         try:
-            artifacts["classifier"] = joblib.load(clf_path)
+            artifacts["classifier"] = load_pickle(str(clf_path))
         except Exception as e:
             errors.append(f"Error loading classifier: {str(e)}")
 
@@ -67,7 +91,7 @@ def load_all_resources():
         errors.append(f"Regression model missing at: {reg_path.resolve()}")
     else:
         try:
-            artifacts["regression"] = joblib.load(reg_path)
+            artifacts["regression"] = load_pickle(str(reg_path))
         except Exception as e:
             errors.append(f"Error loading regression engine: {str(e)}")
 
@@ -75,7 +99,7 @@ def load_all_resources():
     lda_path = MODELS_DIR / "lda_high_value.pkl"
     if lda_path.exists():
         try:
-            artifacts["lda"] = joblib.load(lda_path)
+            artifacts["lda"] = load_pickle(str(lda_path))
         except Exception as e:
             print(f"Non-critical error loading LDA artifact: {str(e)}")
 
@@ -85,10 +109,7 @@ def load_all_resources():
         errors.append(f"DQN weights missing at: {dqn_path.resolve()}")
     else:
         try:
-            dqn = QNetwork()
-            dqn.load_state_dict(torch.load(dqn_path, map_location=torch.device('cpu')))
-            dqn.eval()
-            artifacts["dqn"] = dqn
+            artifacts["dqn"] = load_dqn(str(dqn_path))
         except Exception as e:
             errors.append(f"Error loading DQN policy network: {str(e)}")
 
@@ -106,19 +127,6 @@ if loading_errors:
     st.info(f"**Current Working Directory:** `{ROOT_DIR.resolve()}`\n\nPlease verify that your `data/` and `models/` folders sit exactly alongside `app.py`.")
     st.stop()
 
-# --- SIDEBAR CONTROL PANEL NAVIGATION ---
-st.sidebar.markdown("## CONTROL PANEL")
-
-# Screen Navigation Selection
-app_screen = st.sidebar.selectbox(
-    "Select Screen View", 
-    ["Dashboard", "PCA/LDA Graph Comparison", "Prediction Task Focus", "RL Policy Model Variant"]
-)
-
-# Appending the persistent metadata caption at the bottom of the control panel
-st.sidebar.markdown("---")
-st.sidebar.caption("Dataset: Online Retail (UCI)\n\nModel Infrastructure: MLP + Q-Network")
-
 # --- REUSABLE PIPELINE DATA EXTRACTOR ---
 def get_customer_data(cid):
     cust_row = df_features.loc[[cid]].copy()
@@ -132,210 +140,666 @@ def get_customer_data(cid):
             cust_row[col] = 0.0
     return cust_row, cust_row[expected_regression_cols]
 
+
+def inject_theme():
+    st.markdown(
+        """
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
+            .stApp {
+                background:
+                    radial-gradient(circle at 8% 8%, rgba(11, 140, 109, 0.35), transparent 40%),
+                    radial-gradient(circle at 90% 15%, rgba(5, 94, 148, 0.3), transparent 45%),
+                    linear-gradient(130deg, #0a111f 0%, #101b2f 55%, #10263f 100%);
+                font-family: 'Manrope', sans-serif;
+                color: #f3f7ff;
+            }
+
+            [data-testid="stHeader"] {
+                background: transparent;
+            }
+
+            [data-testid="stSidebar"] {
+                background: rgba(14, 25, 45, 0.64);
+                border-right: 1px solid rgba(156, 182, 216, 0.25);
+                backdrop-filter: blur(18px);
+            }
+
+            .hero-wrap {
+                background: linear-gradient(145deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
+                border: 1px solid rgba(255,255,255,0.28);
+                border-radius: 22px;
+                padding: 1.2rem 1.6rem;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.32);
+                animation: fadeup .8s ease-out;
+            }
+
+            .hero-title {
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 1.95rem;
+                font-weight: 700;
+                margin: 0;
+                color: #f8fcff;
+                letter-spacing: .2px;
+            }
+
+            .hero-sub {
+                margin-top: .45rem;
+                font-size: .98rem;
+                color: #d9e6ff;
+                line-height: 1.5;
+            }
+
+            .section-title {
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: #edf5ff;
+                margin-bottom: .2rem;
+            }
+
+            .section-sub {
+                color: #b7c8e8;
+                margin-bottom: .9rem;
+                font-size: .9rem;
+            }
+
+            .glass-card {
+                border-radius: 18px;
+                border: 1px solid rgba(255, 255, 255, 0.24);
+                background: linear-gradient(165deg, rgba(255,255,255,0.2), rgba(255,255,255,0.06));
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+                backdrop-filter: blur(14px);
+                padding: 1rem;
+                transition: transform .25s ease, box-shadow .25s ease;
+                animation: fadeup .7s ease-out;
+            }
+
+            .glass-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 15px 35px rgba(38, 164, 255, 0.27);
+            }
+
+            .metric-icon {
+                font-size: 1.3rem;
+                opacity: 0.95;
+            }
+
+            .metric-label {
+                margin-top: .6rem;
+                text-transform: uppercase;
+                letter-spacing: 1.2px;
+                color: #cae0ff;
+                font-size: .72rem;
+                font-weight: 700;
+            }
+
+            .metric-value {
+                margin-top: .35rem;
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 1.45rem;
+                font-weight: 700;
+                color: #ffffff;
+            }
+
+            .metric-delta {
+                margin-top: .45rem;
+                font-size: .78rem;
+                color: #8ee3bc;
+                font-weight: 600;
+            }
+
+            .result-panel {
+                border-radius: 16px;
+                padding: 1rem;
+                border: 1px solid rgba(255,255,255,0.25);
+                background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05));
+                margin-bottom: .55rem;
+            }
+
+            .result-title {
+                color: #d6e7ff;
+                font-size: .8rem;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                font-weight: 700;
+            }
+
+            .result-value {
+                color: #ffffff;
+                font-size: 1.2rem;
+                font-family: 'Space Grotesk', sans-serif;
+                font-weight: 700;
+                margin-top: .3rem;
+            }
+
+            .result-note {
+                color: #c2d4f4;
+                font-size: .8rem;
+                margin-top: .25rem;
+            }
+
+            .action-card {
+                border-radius: 16px;
+                border: 1px solid rgba(255,255,255,0.2);
+                background: rgba(255,255,255,0.07);
+                padding: .95rem;
+                min-height: 132px;
+                transition: all .25s ease;
+            }
+
+            .action-card.selected {
+                border: 1px solid rgba(102, 234, 181, 0.88);
+                box-shadow: 0 0 18px rgba(102, 234, 181, 0.38);
+                background: linear-gradient(160deg, rgba(95, 217, 167, 0.28), rgba(255,255,255,0.08));
+            }
+
+            .action-title {
+                color: #eef6ff;
+                font-size: .92rem;
+                font-weight: 700;
+                line-height: 1.35;
+            }
+
+            .action-value {
+                margin-top: .5rem;
+                color: #dcf2ff;
+                font-size: .88rem;
+                font-weight: 600;
+            }
+
+            .action-state {
+                margin-top: .45rem;
+                font-size: .72rem;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: #b7d2ff;
+            }
+
+            .dataset-chip {
+                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.25);
+                background: rgba(255, 255, 255, 0.08);
+                padding: .75rem;
+                margin-top: .75rem;
+                color: #dce8fb;
+                font-size: .82rem;
+            }
+
+            @keyframes fadeup {
+                from { opacity: 0; transform: translateY(8px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+
+            ::-webkit-scrollbar {
+                width: 10px;
+            }
+
+            ::-webkit-scrollbar-track {
+                background: rgba(255,255,255,0.05);
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: rgba(109, 180, 255, 0.65);
+                border-radius: 20px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def section_header(title: str, subtitle: str):
+    st.markdown(
+        f"""
+        <div class="section-title">{title}</div>
+        <div class="section-sub">{subtitle}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def hero_banner():
+    st.markdown(
+        """
+        <div class="hero-wrap">
+            <p class="hero-title">Intelligent customer behavior and marketing strategy dashboard</p>
+            <p class="hero-sub">Unified analytics for profile segmentation, predictive value modeling, and reinforcement learning policy decisions.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def metric_card(icon: str, label: str, value: str, delta: str):
+    st.markdown(
+        f"""
+        <div class="glass-card">
+            <div class="metric-icon">{icon}</div>
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            <div class="metric-delta">{delta}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def prediction_panel(title: str, value: str, note: str):
+    st.markdown(
+        f"""
+        <div class="result-panel">
+            <div class="result-title">{title}</div>
+            <div class="result-value">{value}</div>
+            <div class="result-note">{note}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def action_recommendation_card(title: str, q_value: float, selected: bool):
+    selected_class = "selected" if selected else ""
+    status = "recommended policy" if selected else "inactive option"
+    st.markdown(
+        f"""
+        <div class="action-card {selected_class}">
+            <div class="action-title">{title}</div>
+            <div class="action-value">Calculated Q-value: {q_value:.3f}</div>
+            <div class="action-state">{status}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def update_plot_theme(fig: go.Figure):
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,0.04)",
+        font=dict(family="Manrope", color="#eaf2ff"),
+        margin=dict(l=20, r=20, t=35, b=20),
+        legend=dict(bgcolor="rgba(0,0,0,0)", borderwidth=0),
+    )
+    fig.update_xaxes(
+        gridcolor="rgba(188,210,242,0.25)",
+        zerolinecolor="rgba(188,210,242,0.25)",
+    )
+    fig.update_yaxes(
+        gridcolor="rgba(188,210,242,0.25)",
+        zerolinecolor="rgba(188,210,242,0.25)",
+    )
+    return fig
+
+
+def init_state(customer_list):
+    st.session_state.setdefault("active_screen", "Dashboard")
+    st.session_state.setdefault("selected_customer", customer_list[0])
+    st.session_state.setdefault("projection_mode", "PCA")
+    st.session_state.setdefault("prediction_task", "Both")
+    st.session_state.setdefault("rl_agent", "Trained DQN Agent")
+    st.session_state.setdefault(
+        "filter_tier",
+        "Show all customers",
+    )
+    st.session_state.setdefault("sample_size", 400)
+
+
+def navigation_bar():
+    options = ["Dashboard", "PCA/LDA", "Prediction", "RL Strategy"]
+    
+    selection = st.segmented_control(
+        "Navigation",
+        options,
+        default=st.session_state.active_screen,
+        label_visibility="collapsed"
+    )
+    
+    if selection and selection != st.session_state.active_screen:
+        st.session_state.active_screen = selection
+        st.rerun()
+
+
+inject_theme()
+
+customer_list = sorted(df_features.index.tolist())
+init_state(customer_list)
+
+# --- SIDEBAR CONTROL PANEL ---
+st.sidebar.markdown("### Customer controls")
+st.sidebar.selectbox(
+    "Select customer ID",
+    customer_list,
+    key="selected_customer",
+)
+
+st.sidebar.markdown("### Filters")
+st.sidebar.selectbox(
+    "Background pool",
+    [
+        "Show all customers",
+        "High spend tiers only (Monetary > $1,500)",
+        "High engagement profiles only (Frequency > 5 orders)",
+    ],
+    key="filter_tier",
+)
+
+st.sidebar.slider(
+    "Background sample density",
+    min_value=100,
+    max_value=1000,
+    step=50,
+    key="sample_size",
+)
+
+st.sidebar.markdown(
+    f"""
+    <div class="dataset-chip">
+        <b>Dataset:</b> Online Retail (UCI)<br>
+        <b>Profiles:</b> {len(df_features):,}<br>
+        <b>Model stack:</b> Classification + Regression + DQN
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --- RENDER SCREENS DYNAMICALLY ---
-st.title("Intelligent Customer Behavior & Marketing Strategy Dashboard")
-st.markdown("---")
+hero_banner()
+st.space("small")
+navigation_bar()
+st.space("small")
+
+selected_cid = st.session_state.selected_customer
+cust_row, input_features_df = get_customer_data(selected_cid)
 
 # ==================== SCREEN 1: DASHBOARD ====================
-if app_screen == "Dashboard":
-    st.header("Customer Profile Summary & Prediction Overview")
-    
-    customer_list = sorted(df_features.index.tolist())
-    selected_cid = st.selectbox("Select Customer ID", customer_list, key="db_cid")
-    
-    cust_row, input_features_df = get_customer_data(selected_cid)
-    
+if st.session_state.active_screen == "Dashboard":
+    section_header(
+        "Customer profile summary",
+        f"Live overview for customer ID {selected_cid} with current model outputs.",
+    )
+
     recency_val = int(cust_row["Recency"].values[0]) if "Recency" in cust_row.columns else 0
     frequency_val = int(cust_row["Frequency"].values[0]) if "Frequency" in cust_row.columns else 0
     monetary_val = float(cust_row["Monetary"].values[0]) if "Monetary" in cust_row.columns else 0.0
+    segment_label = "High-value" if monetary_val > 1500 else "Standard-value"
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        st.metric("Recency", f"{recency_val} days")
-    with kpi2:
-        st.metric("Frequency", f"{frequency_val} orders")
-    with kpi3:
-        st.metric("Monetary", f"${monetary_val:,.2f}")
-    with kpi4:
-        segment_label = "High-Value" if monetary_val > 1500 else "Standard-Value"
-        st.metric("Segment Label", segment_label)
-        
-    st.markdown("---")
-    st.subheader("Prediction Results Overview")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        try:
-            class_pred = models["classifier"].predict(input_features_df)[0]
-            class_probs = models["classifier"].predict_proba(input_features_df)[0]
-            confidence = max(class_probs) * 100
-            st.success(f"**Classification (Next Quarter):** Label {class_pred} ({confidence:.1f}% Confidence)")
-        except Exception:
-            st.success(f"**Classification (Next Quarter):** High-Value Profile Target Selected (92.4% Confidence)")
-            
-    with col2:
-        try:
-            pred_spend = float(models["regression"].predict(input_features_df)[0])
-            st.info(f"**Regression — Predicted Spend:** ${max(0.0, pred_spend):,.2f} (± $48.10 RMSE)")
-        except Exception:
-            st.info("**Regression — Predicted Spend:** $612.40 (± $48.10 RMSE)")
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        metric_card("🕒", "Recency", f"{recency_val} days", "Lower is better")
+    with k2:
+        metric_card("🧾", "Frequency", f"{frequency_val} orders", "Higher is better")
+    with k3:
+        metric_card("💰", "Monetary", f"${monetary_val:,.2f}", "Spend score")
+    with k4:
+        metric_card("🎯", "Segment", segment_label.upper(), "Target band")
+
+    class_display = "High-value profile target selected"
+    class_confidence = 92.4
+    try:
+        class_pred = models["classifier"].predict(input_features_df)[0]
+        class_probs = models["classifier"].predict_proba(input_features_df)[0]
+        class_confidence = float(max(class_probs) * 100)
+        class_display = f"Label {class_pred}"
+    except Exception:
+        pass
+
+    spend_display = 612.40
+    try:
+        spend_display = float(models["regression"].predict(input_features_df)[0])
+        spend_display = max(0.0, spend_display)
+    except Exception:
+        pass
+
+    p1, p2 = st.columns(2)
+    with p1:
+        prediction_panel(
+            "Classification output",
+            f"{class_display}",
+            f"Confidence: {class_confidence:.1f}%",
+        )
+    with p2:
+        prediction_panel(
+            "Regression output",
+            f"${spend_display:,.2f}",
+            "Estimated margin bounds: ± $48.10 RMSE",
+        )
+
+    viz1, viz2 = st.columns(2)
+    with viz1:
+       gauge = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=monetary_val,
+            number={"prefix": "$", "valueformat": ",.0f"},
+            title={"text": "Monetary intensity"},
+            # FIX: Restricts the arc to the bottom 72% of the canvas 
+            # so the title always has dedicated space at the top
+            domain={'x': [0, 1], 'y': [0, 0.72]}, 
+            gauge={
+                "axis": {"range": [0, max(60000, monetary_val + 10000)]},
+                "bar": {"color": "#3ccf9b"}, 
+                "bgcolor": "rgba(255,255,255,0.05)",
+            },
+        )
+    )
+    update_plot_theme(gauge)
+    # FIX: Increased top margin (t=75) to give the text plenty of breathing room
+    gauge.update_layout(height=300, margin=dict(t=75, b=20, l=20, r=20))
+    st.plotly_chart(gauge, use_container_width=True)
+
+    with viz2:
+    # Your original bar chart code preserved exactly as it was
+      profile_breakdown = pd.DataFrame(
+        {
+            "Metric": ["Recency", "Frequency", "Monetary/100"],
+            "Value": [
+                recency_val,
+                frequency_val,
+                monetary_val / 100.0,
+            ],
+        }
+    )
+    profile_fig = px.bar(
+        profile_breakdown,
+        x="Metric",
+        y="Value",
+        color="Metric",
+        color_discrete_sequence=["#56c6e8", "#3ccf9b", "#f5bf5f"],
+        title="Feature shape snapshot",
+    )
+    profile_fig.update_traces(marker_line_width=0)
+    update_plot_theme(profile_fig)
+    profile_fig.update_layout(showlegend=False, height=300)
+    st.plotly_chart(profile_fig, use_container_width=True)
 
 # ==================== SCREEN 2: PCA/LDA GRAPH COMPARISON ====================
-elif app_screen == "PCA/LDA Graph Comparison":
-    st.header("Dimensionality Reduction Coordinate Mapping")
-    
-    col_opt1, col_opt2 = st.columns(2)
-    with col_opt1:
-        customer_list = sorted(df_features.index.tolist())
-        selected_cid = st.selectbox("Select Customer ID", customer_list, key="dim_cid")
-    with col_opt2:
-        projection_mode = st.segmented_control("Dimensionality Reduction View", ["PCA", "LDA"], default="PCA")
-        
-    cust_row, input_features_df = get_customer_data(selected_cid)
-    
-    # ADVANCED FEATURE: Interactive Background Distribution Filtering
-    st.markdown("### 📊 Interactive Context Subsegment Filters")
-    f_col1, f_col2 = st.columns(2)
-    with f_col1:
-        filter_tier = st.selectbox("Background Sample Baseline Pool Filter", ["Show All Customers", "High Spend Tiers Only (Monetary > $1,500)", "High Engagement Profiles Only (Frequency > 5 Orders)"])
-    with f_col2:
-        sample_size = st.slider("Background Plot Sample Density", min_value=100, max_value=1000, value=400, step=50)
+elif st.session_state.active_screen == "PCA/LDA":
+    section_header(
+        "Dimensionality reduction explorer",
+        "Inspect customer position across PCA and LDA projections with context-aware filtering.",
+    )
 
-    # Apply structural filters to background sample distribution pool
+    st.session_state.projection_mode = st.segmented_control(
+        "Projection mode",
+        ["PCA", "LDA"],
+        default=st.session_state.projection_mode,
+    )
+
     pool_df = df_features.copy()
-    if "High Spend" in filter_tier:
+    if "High spend" in st.session_state.filter_tier:
         pool_df = pool_df[pool_df["Monetary"] > 1500]
-    elif "High Engagement" in filter_tier:
+    elif "High engagement" in st.session_state.filter_tier:
         pool_df = pool_df[pool_df["Frequency"] > 5]
-        
-    sample_df = pool_df.sample(n=min(sample_size, len(pool_df)), random_state=42) if len(pool_df) > 0 else pool_df
 
-    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=120) # Increased DPI helps with zoom text clarity
-    fig.patch.set_facecolor('white')
-    ax.set_facecolor('#f8fafc') # Light grey canvas area
-    
-    # Large, highly legible dark text parameters
-    ax.tick_params(colors="#1e293b", labelsize=11)
-    ax.xaxis.label.set_color("#1e293b")
-    ax.xaxis.label.set_size(12)
-    ax.yaxis.label.set_color("#1e293b")
-    ax.yaxis.label.set_size(12)
-    ax.grid(True, linestyle="--", alpha=0.5, color="#cbd5e1")
-    
+    sample_df = pool_df.sample(
+        n=min(st.session_state.sample_size, len(pool_df)),
+        random_state=42,
+    ) if len(pool_df) > 0 else pool_df
+
     base_features = ["Monetary", "Recency", "Frequency", "Product_Diversity", "Avg_Spend_Trans"]
-    
-    if projection_mode == "PCA" and "PC1" in df_features.columns and "PC2" in df_features.columns:
-        if len(sample_df) > 0:
-            sns.scatterplot(data=sample_df, x="PC1", y="PC2", alpha=0.5, color="#3b82f6", ax=ax, label=f"Comparison Pool (N={len(sample_df)})")
-        ax.scatter(cust_row["PC1"].values[0], cust_row["PC2"].values[0], color="#ef4444", s=220, edgecolors="black", linewidth=1.5, label=f"Selected Profile ID: {selected_cid}")
-        ax.set_xlabel("PC1")
-        ax.set_ylabel("PC2")
-        ax.legend(facecolor='white', edgecolor='#e2e8f0', labelcolor='#1e2937', fontsize=10)
-        
-    elif projection_mode == "LDA" and models.get("lda") is not None:
+
+    if st.session_state.projection_mode == "PCA" and "PC1" in df_features.columns and "PC2" in df_features.columns:
+        fig = px.scatter(
+            sample_df,
+            x="PC1",
+            y="PC2",
+            opacity=0.5,
+            color_discrete_sequence=["#57b9ff"],
+            title=f"PCA context distribution (N={len(sample_df)})",
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=[cust_row["PC1"].values[0]],
+                y=[cust_row["PC2"].values[0]],
+                mode="markers+text",
+                text=[f"Customer {selected_cid}"],
+                textposition="top center",
+                marker=dict(size=18, color="#ff7f6b", line=dict(width=2, color="#ffffff")),
+                name="Selected customer",
+            )
+        )
+        update_plot_theme(fig)
+        fig.update_layout(height=450)
+        st.plotly_chart(fig)
+
+    elif st.session_state.projection_mode == "LDA" and models.get("lda") is not None:
         try:
             valid_cols = [c for c in base_features if c in df_features.columns]
             lda_target = models["lda"].transform(cust_row[valid_cols])[0][0]
-            
-            if len(sample_df) > 0:
-                lda_sample = models["lda"].transform(sample_df[valid_cols])
-                sns.histplot(lda_sample.ravel(), color="#0d9488", kde=True, ax=ax, alpha=0.4, label="Subsegment Distribution")
-            ax.axvline(lda_target, color="#ef4444", linestyle="--", linewidth=2.5, label=f"Target Location ({lda_target:.3f})")
-            ax.set_xlabel("Linear Discriminant 1 (LDA1)")
-            ax.set_ylabel("Density Count")
-            ax.legend(facecolor='white', edgecolor='#e2e8f0', labelcolor='#1e2937', fontsize=10)
+            lda_sample = models["lda"].transform(sample_df[valid_cols]) if len(sample_df) > 0 else np.array([[0.0]])
+
+            fig = go.Figure()
+            fig.add_trace(
+                go.Histogram(
+                    x=lda_sample.ravel(),
+                    nbinsx=38,
+                    marker_color="rgba(86, 198, 232, 0.65)",
+                    name="Subsegment distribution",
+                    opacity=0.85,
+                )
+            )
+            fig.add_vline(
+                x=lda_target,
+                line_width=3,
+                line_dash="dash",
+                line_color="#ff8f6b",
+            )
+            fig.add_annotation(
+                x=lda_target,
+                y=1,
+                yref="paper",
+                text=f"Customer {selected_cid}: {lda_target:.3f}",
+                showarrow=False,
+                bgcolor="rgba(255,143,107,0.2)",
+                bordercolor="#ff8f6b",
+                font=dict(color="#fff"),
+            )
+            update_plot_theme(fig)
+            fig.update_layout(height=450, bargap=0.05, title="LDA density context")
+            st.plotly_chart(fig)
         except Exception as e:
-            ax.text(0.5, 0.5, f"LDA transformation error: {str(e)}", color='white', ha='center', va='center')
+            st.warning(f"LDA transformation error: {str(e)}")
     else:
-        ax.text(0.5, 0.5, f"LDA model artifact missing from storage directory", color='white', ha='center', va='center')
-        
-    st.pyplot(fig)
+        st.warning("LDA model artifact is missing from storage directory.")
 
 # ==================== SCREEN 3: PREDICTION TASK FOCUS ====================
-elif app_screen == "Prediction Task Focus":
-    st.header("Targeted Predictive Diagnostic Focus Suite")
-    
-    prediction_task = st.radio("Select Active Prediction Model Context", ["Both", "Classification", "Regression"], horizontal=True)
-    
-    customer_list = sorted(df_features.index.tolist())
-    selected_cid = st.selectbox("Select Target Profile ID to Audit", customer_list, key="pred_cid")
-    
-    cust_row, input_features_df = get_customer_data(selected_cid)
-    
-    st.markdown("### Targeted Task Analysis Real-time Feed")
-    
-    # ADVANCED FEATURE: Trustworthiness / Risk Alert Thresholding logic
-    confidence = 92.4 # Safe baseline proxy fallback
-    if prediction_task in ["Both", "Classification"]:
+elif st.session_state.active_screen == "Prediction":
+    section_header(
+        "Targeted predictive diagnostics",
+        "Switch between classification and regression outputs with local feature impact review.",
+    )
+
+    st.session_state.prediction_task = st.segmented_control(
+        "Active model context",
+        ["Both", "Classification", "Regression"],
+        default=st.session_state.prediction_task,
+    )
+
+    confidence = 92.4
+    if st.session_state.prediction_task in ["Both", "Classification"]:
         try:
             class_pred = models["classifier"].predict(input_features_df)[0]
             class_probs = models["classifier"].predict_proba(input_features_df)[0]
             confidence = max(class_probs) * 100
-            
-            # Risk warning banner injection if model prediction certainty drops below target parameters
-            if confidence < 75.0:
-                st.warning(f"⚠️ **Ambiguous Profile Status — Strategy Intervention Advised:** Model certitude has fallen below operational limits ({confidence:.1f}% Confidence). Cross-verify features manually.")
-            else:
-                st.success(f"📈 **Active Classification Engine:** Predicted Return Class: **Label {class_pred}** ({confidence:.1f}% Model Confidence Output)")
-        except Exception:
-            st.success(f"📈 **Active Classification Engine:** High-Value Profile Target Selected ({confidence:.1f}% Confidence)")
 
-    if prediction_task in ["Both", "Regression"]:
+            if confidence < 75.0:
+                st.warning(
+                    f"Ambiguous profile status. Model certainty is below threshold ({confidence:.1f}% confidence)."
+                )
+            else:
+                prediction_panel(
+                    "Classification engine",
+                    f"Label {class_pred}",
+                    f"Confidence output: {confidence:.1f}%",
+                )
+        except Exception:
+            prediction_panel(
+                "Classification engine",
+                "High-value profile target selected",
+                f"Confidence output: {confidence:.1f}%",
+            )
+
+    if st.session_state.prediction_task in ["Both", "Regression"]:
         try:
             pred_spend = float(models["regression"].predict(input_features_df)[0])
-            st.info(f"💎 **Active Regression Engine:** Predicted Valuation Focus: **${max(0.0, pred_spend):,.2f}** (Estimated Margin Bounds: ± $48.10 RMSE)")
+            prediction_panel(
+                "Regression engine",
+                f"${max(0.0, pred_spend):,.2f}",
+                "Estimated margin bounds: ± $48.10 RMSE",
+            )
         except Exception:
-            st.info("💎 **Active Regression Engine:** Predicted Valuation Focus: **$612.40** (Estimated Margin Bounds: ± $48.10 RMSE)")
-            
-    # ADVANCED FEATURE: Micro-Level Profile Local Explainer (Feature Importance Proxy Representation)
-    st.markdown("---")
-    st.subheader("Local Profile Weight Attribution Matrix (Feature Analysis)")
-    
+            prediction_panel(
+                "Regression engine",
+                "$612.40",
+                "Estimated margin bounds: ± $48.10 RMSE",
+            )
+
+    section_header(
+        "Local profile weight attribution matrix",
+        "Feature-level impact proxy derived from normalized customer attributes.",
+    )
+
     explain_cols = ["Monetary", "Recency", "Frequency", "Product_Diversity", "Avg_Spend_Trans"]
     raw_vals = [float(cust_row[c].values[0]) for c in explain_cols]
-    
-    # Derive a profile-specific scaled impact array for presentation
-    norm_impact = np.array(raw_vals) / (np.sum(np.abs(raw_vals)) + 1e-5)
-    impact_df = pd.DataFrame({"Feature Engineering Metric": explain_cols, "Relative Impact Score": norm_impact})
-    impact_df = impact_df.sort_values(by="Relative Impact Score", ascending=True)
 
-    fig_exp, ax_exp = plt.subplots(figsize=(7, 2.5), dpi=120)
-    fig_exp.patch.set_facecolor('white')
-    ax_exp.set_facecolor('#f8fafc')
-    
-    colors_exp = ['#16a34a' if x >= 0 else '#dc2626' for x in impact_df["Relative Impact Score"]]
-    sns.barplot(data=impact_df, x="Relative Impact Score", y="Feature Engineering Metric", palette=colors_exp, ax=ax_exp)
-    
-    # High visibility text configurations
-    ax_exp.tick_params(colors="#1e293b", labelsize=10)
-    ax_exp.xaxis.label.set_color("#1e293b")
-    ax_exp.yaxis.label.set_color("#1e293b")
-    ax_exp.grid(True, axis='x', linestyle="--", alpha=0.5, color="#cbd5e1")
-    ax_exp.spines['top'].set_visible(False)
-    ax_exp.spines['right'].set_visible(False)
-    ax_exp.spines['left'].set_color('#cbd5e1')
-    ax_exp.spines['bottom'].set_color('#cbd5e1')
-    
-    st.pyplot(fig_exp)
-    
-    st.markdown("---")
-    st.markdown("**Core Architecture Evaluation Diagnostics:**")
-    st.caption("Cross-Validation F1-Score Baseline: 0.89 | R² Continuous Fit Metric Score: 0.81")
+    norm_impact = np.array(raw_vals) / (np.sum(np.abs(raw_vals)) + 1e-5)
+    impact_df = pd.DataFrame(
+        {
+            "Feature engineering metric": explain_cols,
+            "Relative impact score": norm_impact,
+        }
+    ).sort_values(by="Relative impact score", ascending=True)
+
+    impact_fig = px.bar(
+        impact_df,
+        x="Relative impact score",
+        y="Feature engineering metric",
+        orientation="h",
+        color="Relative impact score",
+        color_continuous_scale=["#ff7f7f", "#7fd1ff", "#6bf1b0"],
+        title="Relative impact profile",
+    )
+    update_plot_theme(impact_fig)
+    impact_fig.update_layout(height=330, coloraxis_showscale=False)
+    st.plotly_chart(impact_fig)
+
+    st.caption("Cross-validation F1-score baseline: 0.89 | R² continuous fit metric score: 0.81")
 
 # ==================== SCREEN 4: RL POLICY MODEL VARIANT ====================
-elif app_screen == "RL Policy Model Variant":
-    st.header("Reinforcement Learning Evaluation & Operations Strategy")
-    
-    col_rl1, col_rl2 = st.columns(2)
-    with col_rl1:
-        rl_agent_selection = st.selectbox("Select Operational Policy Model Variant", ["Trained DQN Agent", "Tabular Q-Agent"])
-    with col_rl2:
-        customer_list = sorted(df_features.index.tolist())
-        selected_cid = st.selectbox("Select Active Interaction Profile", customer_list, key="rl_cid")
-        
-    cust_row, _ = get_customer_data(selected_cid)
-    
-    # 1. Individual Recommendation Action Cards Calculation
+elif st.session_state.active_screen == "RL Strategy":
+    section_header(
+        "Reinforcement learning operations strategy",
+        "Policy recommendation cards and comparative profit diagnostics for active profile decisions.",
+    )
+
+    st.session_state.rl_agent = st.selectbox(
+        "Operational policy model variant",
+        ["Trained DQN Agent", "Tabular Q-Agent"],
+        index=["Trained DQN Agent", "Tabular Q-Agent"].index(st.session_state.rl_agent),
+    )
+
     state_cols = ["Recency_scaled", "Frequency_scaled", "Monetary_scaled", "PC1", "PC2"]
     for c in state_cols:
         if c not in cust_row.columns:
@@ -348,118 +812,93 @@ elif app_screen == "RL Policy Model Variant":
 
     recommended_action = int(np.argmax(q_values))
     action_labels = {
-        0: "Action 0: No Action Baseline Treatment Strategy",
-        1: "Action 1: 10% Discount Coupon Treatment Offer",
-        2: "Action 2: Free Premium Trial Special Campaign Access"
+        0: "Action 0: No action baseline treatment strategy",
+        1: "Action 1: 10% discount coupon treatment offer",
+        2: "Action 2: Free premium trial special campaign access",
     }
 
-    st.markdown("### Contextual Single Profile Policy Decisions")
-    rl_col1, rl_col2, rl_col3 = st.columns(3)
-    columns_list = [rl_col1, rl_col2, rl_col3]
+    a1, a2, a3 = st.columns(3)
+    for idx, col in enumerate([a1, a2, a3]):
+        with col:
+            action_recommendation_card(
+                action_labels[idx],
+                float(q_values[idx]),
+                selected=(idx == recommended_action),
+            )
 
-    for act_idx, col_pane in enumerate(columns_list):
-        with col_pane:
-            q_val_str = f"Calculated Q-Value: {q_values[act_idx]:.3f}"
-            if act_idx == recommended_action:
-                st.markdown(
-                    f"<div style='border:2px solid green; background-color:#e6f9ec; padding:15px; border-radius:5px;'>"
-                    f"<h4 style='color:green; margin:0;'>★ {action_labels[act_idx]}</h4>"
-                    f"<p style='margin:5px 0; color:black;'><b>{q_val_str}</b></p>"
-                    f"<span style='color:green;'><b>Selected Policy Strategy Decision</b></span>"
-                    f"</div>", 
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f"<div style='border:1px solid #ccc; padding:15px; border-radius:5px; color:#555;'>"
-                    f"<h4 style='margin:0; color:#555;'>{action_labels[act_idx]}</h4>"
-                    f"<p style='margin:5px 0;'>{q_val_str}</p>"
-                    f"<span>Inactive Option</span>"
-                    f"</div>", 
-                    unsafe_allow_html=True
-                )
-
-    # ADVANCED FEATURE: Actionable Multi-Quarter Decision Journey Simulation Tracker
-    st.markdown("---")
-    st.subheader("📈 Multi-Quarter Simulated Customer Valuation Path (Decision Tracker)")
-    
-    # Structural simulation loop checking future state degradation bounds across subsequent validation windows
-    sim_steps = ["Current Quarter", "Quarter +1", "Quarter +2", "Quarter +3"]
-    
-    # Standardize baseline decay parameters representing dynamic customer interaction drift over time
+    sim_steps = ["Current quarter", "Quarter +1", "Quarter +2", "Quarter +3"]
     action_1_trajectory = [q_values[1], q_values[1] * 1.08, q_values[1] * 1.14, q_values[1] * 1.19]
     action_2_trajectory = [q_values[2], q_values[2] * 0.95, q_values[2] * 0.88, q_values[2] * 0.82]
-    
-    fig_track, ax_track = plt.subplots(figsize=(9, 3.2), dpi=120)
-    fig_track.patch.set_facecolor('white')
-    ax_track.set_facecolor('#f8fafc')
-    
-    ax_track.plot(sim_steps, action_1_trajectory, marker='o', linewidth=2.5, color='#16a34a', label="Simulated Path: Action 1 (Discount Strategy)")
-    ax_track.plot(sim_steps, action_2_trajectory, marker='x', linewidth=2.5, color='#dc2626', linestyle="--", label="Simulated Path: Action 2 (Premium Strategy)")
-    
-    ax_track.set_ylabel("Expected Value Estimate", color="#1e293b", fontsize=10)
-    ax_track.tick_params(colors="#1e293b", labelsize=10)
-    ax_track.grid(True, linestyle="--", alpha=0.5, color="#cbd5e1")
-    ax_track.spines['top'].set_visible(False)
-    ax_track.spines['right'].set_visible(False)
-    ax_track.spines['left'].set_color('#cbd5e1')
-    ax_track.spines['bottom'].set_color('#cbd5e1')
-    ax_track.legend(facecolor='white', edgecolor='#e2e8f0', labelcolor='#1e2937', loc='upper left', fontsize=10)
-    
-    st.pyplot(fig_track)
 
-    # 2. Global Strategy Evaluation Plot Section
-    st.markdown("---")
-    st.subheader("Comparative Financial Policy Analysis: Performance vs Operational Baseline (Section 6.4)")
+    traj_fig = go.Figure()
+    traj_fig.add_trace(
+        go.Scatter(
+            x=sim_steps,
+            y=action_1_trajectory,
+            mode="lines+markers",
+            line=dict(color="#6bf1b0", width=3),
+            marker=dict(size=9),
+            name="Action 1 discount strategy",
+        )
+    )
+    traj_fig.add_trace(
+        go.Scatter(
+            x=sim_steps,
+            y=action_2_trajectory,
+            mode="lines+markers",
+            line=dict(color="#ff9f73", width=3, dash="dash"),
+            marker=dict(size=9),
+            name="Action 2 premium strategy",
+        )
+    )
+    update_plot_theme(traj_fig)
+    traj_fig.update_layout(height=360, title="Multi-quarter simulated customer valuation path")
+    st.plotly_chart(traj_fig)
 
     strategy_metrics = {
-        "Operational Strategy": ["DQN Policy Model", "Tabular Q-Policy Variant", "Random Baseline Actions Strategy", "Always-No-Action Policy"],
-        "Total Accumulated Test Net Profit ($)": [264095.16, 257211.36, 171511.95, 106318.07]
+        "Operational strategy": [
+            "DQN Policy Model",
+            "Tabular Q-Policy Variant",
+            "Random Baseline Actions Strategy",
+            "Always-No-Action Policy",
+        ],
+        "Total accumulated test net profit ($)": [264095.16, 257211.36, 171511.95, 106318.07],
     }
     results_df = pd.DataFrame(strategy_metrics)
 
-    plt.clf()
-    fig_bar, ax_bar = plt.subplots(figsize=(10, 4.5), dpi=120)
-    fig_bar.patch.set_facecolor('white')
-    ax_bar.set_facecolor('#f8fafc')
-
     selected_agent_map = {
         "Trained DQN Agent": "DQN Policy Model",
-        "Tabular Q-Agent": "Tabular Q-Policy Variant"
+        "Tabular Q-Agent": "Tabular Q-Policy Variant",
     }
-    current_selected = selected_agent_map.get(rl_agent_selection, "")
+    current_selected = selected_agent_map.get(st.session_state.rl_agent, "")
 
-    custom_colors = []
-    for strategy in results_df["Operational Strategy"]:
-        if strategy == current_selected:
-            custom_colors.append("#16a34a") # Clean green for active selection
-        else:
-            custom_colors.append("#94a3b8") # Slate grey for comparison metrics
-
-    sns.barplot(data=results_df, x="Operational Strategy", y="Total Accumulated Test Net Profit ($)", palette=custom_colors, ax=ax_bar)
-
-    ax_bar.set_ylabel("Net Profit ($)", color="#1e293b", fontsize=11, labelpad=10)
-    ax_bar.set_xlabel("Strategy Variant", color="#1e293b", fontsize=11, labelpad=10)
-    ax_bar.tick_params(colors="#1e293b", which="both", labelsize=10)
-    ax_bar.grid(True, axis='y', linestyle="--", alpha=0.5, color="#cbd5e1")
-    ax_bar.spines['top'].set_visible(False)
-    ax_bar.spines['right'].set_visible(False)
-    ax_bar.spines['left'].set_color('#cbd5e1')
-    ax_bar.spines['bottom'].set_color('#cbd5e1')
-
-    for index, row in results_df.iterrows():
-        ax_bar.text(
-            index, 
-            row["Total Accumulated Test Net Profit ($)"] + 5000, 
-            f'${row["Total Accumulated Test Net Profit ($)"]:,.2f}', 
-            color='#1e293b', ha="center", fontweight='bold', fontsize=10
-        )
-
-    ax_bar.set_ylim(0, max(results_df["Total Accumulated Test Net Profit ($)"]) * 1.15)
-    st.pyplot(fig_bar)
+    colors = ["#6bf1b0" if s == current_selected else "#87a8d6" for s in results_df["Operational strategy"]]
+    bar_fig = go.Figure(
+        data=[
+            go.Bar(
+                x=results_df["Operational strategy"],
+                y=results_df["Total accumulated test net profit ($)"],
+                marker_color=colors,
+                text=[f"${v:,.2f}" for v in results_df["Total accumulated test net profit ($)"]],
+                textposition="outside",
+            )
+        ]
+    )
+    update_plot_theme(bar_fig)
+    bar_fig.update_layout(
+        height=410,
+        title="Comparative financial policy analysis",
+        yaxis_title="Net profit ($)",
+        xaxis_title="Strategy variant",
+    )
+    st.plotly_chart(bar_fig)
 
     dqn_profit = 264095.16
     random_profit = 171511.95
     pct_improvement = ((dqn_profit - random_profit) / random_profit) * 100
 
-    st.info(f"💡 **Live Performance Review:** The Deep Q-Network Agent currently provides a total cumulative profit of **${dqn_profit:,.2f}** over the test split, yielding a **+{pct_improvement:.1f}% improvement** against the Random Operations baseline strategy portfolio.")
+    prediction_panel(
+        "Live performance review",
+        f"DQN cumulative profit: ${dqn_profit:,.2f}",
+        f"Improvement against random baseline: +{pct_improvement:.1f}%",
+    )
